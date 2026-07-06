@@ -1,0 +1,6 @@
+services:
+  agentic-crm:
+    build: .
+    volumes:
+      - ./data:/app/data
+    restart: always
