@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -10,6 +11,7 @@ import {
 import { z } from "zod";
 import { dbOps } from "./db";
 import { CustomerSchema, DocumentSchema, SupportTicketSchema, NoteSchema, OpportunitySchema } from "./types";
+import http from "node:http";
 
 const server = new Server(
   {
@@ -41,10 +43,6 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 
 server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   const url = new URL(request.params.uri);
-  if (url.protocol !== "crm:") {
-    throw new Error("Invalid protocol");
-  }
-
   const parts = url.pathname.split("/");
   if (parts[1] === "customer") {
     const customerId = parts[2];
@@ -102,14 +100,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "upload_document",
-        description: "Upload a document for a customer (e.g., ID, Contract)",
+        description: "Upload a document for a customer",
         inputSchema: {
           type: "object",
           properties: {
             customerId: { type: "string" },
-            type: { type: "string", description: "Type of document (e.g., ID, KYC, Contract)" },
-            url: { type: "string", description: "URL to the document" },
-            name: { type: "string", description: "Display name of the document" },
+            type: { type: "string" },
+            url: { type: "string" },
+            name: { type: "string" },
           },
           required: ["customerId", "type", "url", "name"],
         },
@@ -279,13 +277,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Agentic CRM MCP Server running on stdio");
-}
+const transportSessions = new Map<string, SSEServerTransport>();
 
-main().catch((error) => {
-  console.error("Fatal error in main():", error);
-  process.exit(1);
+const httpServer = http.createServer(async (req, res) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host || 'localhost'}`);
+
+  if (url.pathname === "/sse") {
+    const transport = new SSEServerTransport("/messages", res);
+    await server.connect(transport);
+
+    const sessionId = transport.sessionId;
+    transportSessions.set(sessionId, transport);
+
+    req.on("close", () => {
+      transportSessions.delete(sessionId);
+    });
+    return;
+  }
+
+  if (url.pathname === "/messages" && req.method === "POST") {
+    const sessionId = url.searchParams.get("sessionId");
+    const transport = transportSessions.get(sessionId || "");
+    if (transport) {
+      await transport.handlePostMessage(req, res);
+    } else {
+      res.statusCode = 404;
+      res.end("Session not found");
+    }
+    return;
+  }
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/plain");
+  res.end("Agentic CRM MCP Server is running. Connect via SSE at /sse");
+});
+
+const PORT = process.env.PORT || 3000;
+httpServer.listen(PORT, () => {
+  console.error(`Agentic CRM MCP Server running on port ${PORT} (SSE)`);
 });

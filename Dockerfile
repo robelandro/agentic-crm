@@ -8,8 +8,8 @@ RUN bun install --frozen-lockfile
 COPY . .
 
 RUN mkdir -p data
-
-# Ensure the database directory is writable
 RUN chmod 777 data
+
+EXPOSE 3000
 
 ENTRYPOINT ["bun", "run", "src/index.ts"]

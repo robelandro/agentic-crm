@@ -51,7 +51,23 @@ A production-ready Model Context Protocol (MCP) server for a CRM system, built w
 
 Add the following to your Claude Desktop configuration (usually `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 
-### Using Bun directly
+### Using SSE (Recommended for Server Deployment)
+
+If the server is running at `http://localhost:3000`:
+
+```json
+{
+  "mcpServers": {
+    "agentic-crm": {
+      "url": "http://localhost:3000/sse"
+    }
+  }
+}
+```
+
+### Using Bun directly (stdio)
+
+*Note: The current implementation defaults to SSE. To use stdio, you would need to modify `src/index.ts` to use `StdioServerTransport`.*
 
 ```json
 {
@@ -59,19 +75,6 @@ Add the following to your Claude Desktop configuration (usually `~/Library/Appli
     "agentic-crm": {
       "command": "bun",
       "args": ["run", "/path/to/agentic-crm/src/index.ts"]
-    }
-  }
-}
-```
-
-### Using Docker
-
-```json
-{
-  "mcpServers": {
-    "agentic-crm": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm", "-v", "agentic-crm-data:/app/data", "agentic-crm"]
     }
   }
 }
